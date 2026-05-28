@@ -10,10 +10,11 @@ public sealed class TelemetryService : IDisposable
     public event Action<ForzaTelemetryPacket>? PacketReceived;         // throttled ~4 Hz
 
     private Settings _settings = new();
-    private G29HidLeds? _leds;
+    private volatile G29HidLeds? _leds;
     private CancellationTokenSource? _cts;
     private Task? _udpTask;
     private Task? _flashTask;
+    private Task? _reconnectTask;
 
     private volatile bool _atLimiter;
     private long _lastFlashTick;
@@ -55,8 +56,9 @@ public sealed class TelemetryService : IDisposable
     {
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-        _udpTask = Task.Run(() => UdpLoop(ct), ct);
-        _flashTask = Task.Run(() => FlashLoop(ct), ct);
+        _udpTask      = Task.Run(() => UdpLoop(ct),       ct);
+        _flashTask    = Task.Run(() => FlashLoop(ct),     ct);
+        _reconnectTask = Task.Run(() => ReconnectLoop(ct), ct);
     }
 
     private void StopLoops()
@@ -64,8 +66,9 @@ public sealed class TelemetryService : IDisposable
         _cts?.Cancel();
         try
         {
-            Task.WhenAll(_udpTask ?? Task.CompletedTask,
-                           _flashTask ?? Task.CompletedTask).Wait(1500);
+            Task.WhenAll(_udpTask       ?? Task.CompletedTask,
+                         _flashTask     ?? Task.CompletedTask,
+                         _reconnectTask ?? Task.CompletedTask).Wait(1500);
         }
         catch { }
         _cts?.Dispose();
@@ -155,8 +158,8 @@ public sealed class TelemetryService : IDisposable
         float idle = pkt.EngineIdleRpm;
         if (max <= 0f) return;
 
-        float ratio = current / max;
-        float idleRatio = max > 0f ? idle / max : 0f;
+        float ratio    = current / max;
+        float idleRatio = idle / max;
 
         var (stage, progressRatio) = ComputeLedState(
             ratio, idleRatio, _settings.SolidRatio, _settings.FlashRatio);
@@ -178,6 +181,28 @@ public sealed class TelemetryService : IDisposable
         {
             _lastDumpTick = tick;
             PacketReceived?.Invoke(pkt);
+        }
+    }
+
+    // ── Reconnect loop ────────────────────────────────────────────────────────
+
+    private void ReconnectLoop(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            ct.WaitHandle.WaitOne(3000);
+            if (ct.IsCancellationRequested) break;
+            if (_leds?.IsOpen == true) continue;
+
+            bool hadDevice = _leds != null; // was open before but handle was invalidated
+            _leds?.Dispose();
+            _leds = G29HidLeds.Open();
+            bool connected = _leds?.IsOpen == true;
+
+            if (hadDevice || connected)
+                G29StatusChanged?.Invoke(connected);
+
+            if (connected) FlashTest();
         }
     }
 

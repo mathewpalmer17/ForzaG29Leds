@@ -75,14 +75,8 @@ internal sealed class G29HidLeds : IDisposable
                         FILE_SHARE_READ | FILE_SHARE_WRITE,
                         IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero);
 
-                    if (h == Invalid || h == IntPtr.Zero)
-                    {
-                        Console.WriteLine($"[HID] {Tail(path)}  open failed (err {Marshal.GetLastWin32Error()})");
-                        continue;
-                    }
+                    if (h == Invalid || h == IntPtr.Zero) continue;
 
-                    // Check Usage Page — we want Generic Desktop (1), the main joystick
-                    // interface, which is the one that accepts FF/LED output reports.
                     if (!HidD_GetPreparsedData(h, out IntPtr prep))
                     {
                         CloseHandle(h);
@@ -93,18 +87,13 @@ internal sealed class G29HidLeds : IDisposable
                     HidP_GetCaps(prep, ref caps);
                     HidD_FreePreparsedData(prep);
 
-                    Console.WriteLine(
-                        $"[HID] {Tail(path)}  usagePage={caps.UsagePage}  usage={caps.Usage}" +
-                        $"  in={caps.InputReportByteLength}  out={caps.OutputReportByteLength}");
-
-                    // UsagePage 1 = Generic Desktop — this is the main wheel interface
+                    // UsagePage 1 = Generic Desktop — the main wheel interface that accepts LED reports
                     if (caps.UsagePage != 1)
                     {
                         CloseHandle(h);
                         continue;
                     }
 
-                    Console.WriteLine("[HID] → selected (UsagePage=1)");
                     return new G29HidLeds(h, caps.OutputReportByteLength);
                 }
                 finally { Marshal.FreeHGlobal(buf); }
@@ -144,27 +133,20 @@ internal sealed class G29HidLeds : IDisposable
         buf[1] = 0xF8;
         buf[2] = 0x12;
         buf[3] = ledMask;
-        buf[4] = 0x00;
-        buf[5] = 0x00;
-        buf[6] = 0x00;
         buf[7] = 0x01;
 
         bool ok = WriteFile(_handle, buf, (uint)buf.Length, out uint written, IntPtr.Zero);
         if (!ok)
         {
             int err = Marshal.GetLastWin32Error();
-            Console.WriteLine($"[HID] WriteFile failed: err={err} written={written}");
+            // Device was physically disconnected — invalidate handle so reconnect loop picks it up
+            if (err is 1167 or 433 or 6) // ERROR_DEVICE_NOT_CONNECTED, ERROR_NO_SUCH_DEVICE, ERROR_INVALID_HANDLE
+            {
+                CloseHandle(_handle);
+                _handle = Invalid;
+            }
         }
         return ok;
-    }
-
-    // ── Misc ──────────────────────────────────────────────────────────────────
-
-    private static string Tail(string path)
-    {
-        // Return the device instance segment (between 2nd and 3rd # in HID path)
-        var parts = path.Split('#');
-        return parts.Length >= 3 ? parts[2] : path;
     }
 
     public void Dispose()
