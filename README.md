@@ -40,7 +40,7 @@ ForzaG29Leds.exe
 
 The app starts in the system tray. Double-click the icon or right-click › **Settings** to configure.
 
-The wheel must be plugged in before launching. No G HUB or additional DLLs required.
+The wheel can be plugged in or out while the app is running. No G HUB or additional DLLs required.
 
 If no telemetry is arriving (grey status dot), confirm Data Out is enabled in Forza and the port matches.
 

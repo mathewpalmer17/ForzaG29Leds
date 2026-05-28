@@ -94,8 +94,9 @@ internal sealed class LogitechWheelLeds : IDisposable
                     }
 
                     HIDP_CAPS caps = default;
-                    HidP_GetCaps(prep, ref caps);
+                    bool capsOk = HidP_GetCaps(prep, ref caps) == HIDP_STATUS_SUCCESS;
                     HidD_FreePreparsedData(prep);
+                    if (!capsOk) { CloseHandle(h); continue; }
 
                     // UsagePage 1 = Generic Desktop — the main wheel interface that accepts LED reports
                     if (caps.UsagePage != 1)
@@ -192,6 +193,8 @@ internal sealed class LogitechWheelLeds : IDisposable
     static extern bool WriteFile(IntPtr h, byte[] buf, uint count, out uint written, IntPtr overlapped);
     [DllImport("kernel32.dll")]
     static extern bool CloseHandle(IntPtr h);
+
+    private const int HIDP_STATUS_SUCCESS = unchecked((int)0x00110000);
 
     private const int DIGCF_PRESENT = 0x02;
     private const int DIGCF_DEVICEINTERFACE = 0x10;
