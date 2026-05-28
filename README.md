@@ -1,16 +1,24 @@
 # ForzaG29Leds
 
-Windows tray app that drives the five rev-limiter LEDs on a Logitech G29 steering wheel using live UDP telemetry from Forza Horizon 6 (compatible with FH5).
+Windows tray app that drives the rev-limiter LEDs on a Logitech G29 or G923 steering wheel using live UDP telemetry from Forza Horizon 6 (compatible with FH5).
 
 ## How it works
 
 - Runs in the system tray — right-click for Settings or Exit
 - Opens a UDP socket on the configured port and parses the FH6 "Car Dash" 324-byte telemetry packet
-- Sends raw HID output reports directly to the G29 (no Logitech SDK dependency)
+- Sends raw HID output reports directly to the wheel (no Logitech SDK dependency)
 - Three LED stages:
   - **Progressive fill** from idle RPM upward
   - **All solid** approaching the shift point
   - **All flashing** at the configured flash threshold (shift now)
+
+## Supported wheels
+
+| Wheel | PID |
+|---|---|
+| Logitech G29 | `0xC24F` |
+| Logitech G923 PS/PC | `0xC267` |
+| Logitech G923 Xbox | `0xC26D` / `0xC26E` |
 
 ## Setup
 
@@ -32,7 +40,7 @@ ForzaG29Leds.exe
 
 The app starts in the system tray. Double-click the icon or right-click › **Settings** to configure.
 
-The G29 must be plugged in before launching. No G HUB or additional DLLs required.
+The wheel must be plugged in before launching. No G HUB or additional DLLs required.
 
 ## Settings
 
@@ -66,7 +74,7 @@ dotnet build -c Release
 
 ## Technical notes
 
-- LED control uses raw USB HID output reports — the Logitech Steering Wheel SDK reports `LedCaps=False` for the G29 in G HUB 2024+ and cannot drive the rev LEDs.
-- LED command (7 data bytes from Linux `hid-lg4ff.c`): `[0xF8, 0x12, ledMask, 0x00, 0x00, 0x00, 0x01]`. On Windows, `WriteFile` to a HID device requires a `0x00` Report ID prefix and the buffer padded to `OutputReportByteLength` (17 bytes for the G29).
-- Device selected by VID `0x046D`, PID `0xC24F`, HID Usage Page 1 (Generic Desktop).
+- LED control uses raw USB HID output reports — the Logitech Steering Wheel SDK reports `LedCaps=False` for the G29/G923 in G HUB 2024+ and cannot drive the rev LEDs.
+- LED command (7 data bytes from Linux `hid-lg4ff.c`, identical on G29 and G923): `[0xF8, 0x12, ledMask, 0x00, 0x00, 0x00, 0x01]`. On Windows, `WriteFile` to a HID device requires a `0x00` Report ID prefix and the buffer padded to `OutputReportByteLength`.
+- Device matched by VID `0x046D` (Logitech) + supported PID + HID Usage Page 1 (Generic Desktop).
 - Telemetry packet offsets verified against [TheBanHammer/fh6-tel](https://github.com/TheBanHammer/fh6-tel). Tire temperatures are transmitted in Fahrenheit.

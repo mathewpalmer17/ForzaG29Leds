@@ -2,10 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace ForzaG29Leds;
 
-// Controls Logitech G29 shift indicator LEDs via raw USB HID output report.
+// Controls Logitech G29 / G923 shift indicator LEDs via raw USB HID output report.
 //
-// Protocol — from logitech-g29 npm package (nightmode/logitech-g29) and
-//             Linux hid-lg4ff.c lg4ff_set_leds():
+// Protocol — from Linux hid-lg4ff.c lg4ff_set_leds() (confirmed identical on G29 and G923):
 //
 //   Data (7 bytes):  [0xF8, 0x12, ledMask, 0x00, 0x00, 0x00, 0x01]
 //   On Windows the HID driver requires a Report-ID byte prepended (0x00 when
@@ -14,27 +13,37 @@ namespace ForzaG29Leds;
 //
 //   ledMask bits 0-4 map to LEDs 1-5 (bit 0 = first green, bit 4 = last red).
 //
-// Device selection — matches the node-hid findWheel() heuristic:
-//   VendorId = 0x046D (Logitech)
-//   ProductId = 0xC24F  OR  product name contains "G29"
-//   HID Usage Page = 1 (Generic Desktop), i.e. the main joystick interface
-internal sealed class G29HidLeds : IDisposable
+// Supported wheels (VendorId = 0x046D, Logitech):
+//   G29              PID 0xC24F
+//   G923 PS/PC       PID 0xC267
+//   G923 Xbox        PID 0xC26D
+//   G923 Xbox (alt)  PID 0xC26E
+//
+// HID Usage Page = 1 (Generic Desktop) selects the main joystick interface.
+internal sealed class LogitechWheelLeds : IDisposable
 {
     private static readonly IntPtr Invalid = new IntPtr(-1);
     private const ushort LogiVid = 0x046D;
-    private const ushort G29Pid = 0xC24F;
+
+    private static readonly ushort[] SupportedPids =
+    [
+        0xC24F,  // G29
+        0xC267,  // G923 PS/PC
+        0xC26D,  // G923 Xbox
+        0xC26E,  // G923 Xbox (alt)
+    ];
 
     private IntPtr _handle;
     private int _reportLen;   // OutputReportByteLength (includes Report ID byte)
     private bool _disposed;
 
-    private G29HidLeds(IntPtr h, int reportLen) { _handle = h; _reportLen = reportLen; }
+    private LogitechWheelLeds(IntPtr h, int reportLen) { _handle = h; _reportLen = reportLen; }
 
     public bool IsOpen => _handle != Invalid && _handle != IntPtr.Zero;
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
-    public static G29HidLeds? Open()
+    public static LogitechWheelLeds? Open()
     {
         HidD_GetHidGuid(out Guid hidGuid);
         IntPtr devSet = SetupDiGetClassDevs(ref hidGuid, null, IntPtr.Zero,
@@ -67,7 +76,8 @@ internal sealed class G29HidLeds : IDisposable
                     string path = Marshal.PtrToStringUni(buf + 4) ?? "";
                     if (!path.Contains($"VID_{LogiVid:X4}", StringComparison.OrdinalIgnoreCase))
                         continue;
-                    if (!path.Contains($"PID_{G29Pid:X4}", StringComparison.OrdinalIgnoreCase))
+                    if (!SupportedPids.Any(pid =>
+                            path.Contains($"PID_{pid:X4}", StringComparison.OrdinalIgnoreCase)))
                         continue;
 
                     IntPtr h = CreateFile(path,
@@ -94,7 +104,7 @@ internal sealed class G29HidLeds : IDisposable
                         continue;
                     }
 
-                    return new G29HidLeds(h, caps.OutputReportByteLength);
+                    return new LogitechWheelLeds(h, caps.OutputReportByteLength);
                 }
                 finally { Marshal.FreeHGlobal(buf); }
             }
@@ -117,7 +127,7 @@ internal sealed class G29HidLeds : IDisposable
     }
 
     public bool TurnOff() => WriteReport(0x00);
-    public bool AllOn() => WriteReport(0x1F);
+    public bool AllOn()   => WriteReport(0x1F);
 
     private bool WriteReport(byte ledMask)
     {
@@ -125,7 +135,7 @@ internal sealed class G29HidLeds : IDisposable
 
         // Windows HID WriteFile requires exactly OutputReportByteLength bytes.
         // byte[0]  = 0x00 (Report ID — devices with no numbered reports use 0)
-        // bytes[1..7] = the 7-byte LED command from hid-lg4ff / logitech-g29 npm
+        // bytes[1..7] = the 7-byte LED command from hid-lg4ff
         // remainder   = 0x00 padding to reach OutputReportByteLength
         int len = Math.Max(_reportLen, 8);
         byte[] buf = new byte[len];

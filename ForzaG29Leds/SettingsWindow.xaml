@@ -1,7 +1,7 @@
 <Window x:Class="ForzaG29Leds.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ForzaG29 LED Settings"
+        Title="Forza Rev LED Settings"
         Width="420" Height="540"
         MinWidth="380" MinHeight="480"
         ResizeMode="CanResize"
@@ -90,8 +90,8 @@
                         <Border BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="12">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                    <Ellipse x:Name="G29Dot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="G29Label"/>
+                                    <Ellipse x:Name="WheelDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="WheelLabel"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse x:Name="TelDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"/>

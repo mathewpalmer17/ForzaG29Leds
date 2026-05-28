@@ -24,26 +24,26 @@ public partial class SettingsWindow : Window
         FlashBox.Text = settings.FlashPercent.ToString();
         FlashMsBox.Text = settings.FlashIntervalMs.ToString();
 
-        _service.G29StatusChanged += OnG29Status;
+        _service.WheelStatusChanged += OnWheelStatus;
         _service.TelemetryStatusChanged += OnTelemetryStatus;
         _service.PacketReceived += OnPacketReceived;
 
-        RefreshG29(service.IsG29Connected);
+        RefreshWheel(service.IsWheelConnected);
         RefreshTel(service.IsReceivingTelemetry);
     }
 
     // ── Status dots ───────────────────────────────────────────────────────────
 
-    private void OnG29Status(bool connected) =>
-        Dispatcher.Invoke(() => RefreshG29(connected));
+    private void OnWheelStatus(bool connected) =>
+        Dispatcher.Invoke(() => RefreshWheel(connected));
 
     private void OnTelemetryStatus(bool receiving) =>
         Dispatcher.Invoke(() => RefreshTel(receiving));
 
-    private void RefreshG29(bool connected)
+    private void RefreshWheel(bool connected)
     {
-        G29Dot.Fill = connected ? Green : Grey;
-        G29Label.Text = connected ? "G29 connected" : "G29 not found";
+        WheelDot.Fill = connected ? Green : Grey;
+        WheelLabel.Text = connected ? "Wheel connected" : "Wheel not found";
     }
 
     private void RefreshTel(bool receiving)
@@ -170,7 +170,7 @@ public partial class SettingsWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        _service.G29StatusChanged -= OnG29Status;
+        _service.WheelStatusChanged -= OnWheelStatus;
         _service.TelemetryStatusChanged -= OnTelemetryStatus;
         _service.PacketReceived -= OnPacketReceived;
         base.OnClosed(e);
