@@ -20,27 +20,27 @@ public class LedMaskTests
     [InlineData(1.00f, 0x1F)]   // all on
     public void RatioToMask_ReturnsCorrectMask(float ratio, byte expectedMask)
     {
-        Assert.Equal(expectedMask, G29HidLeds.RatioToMask(ratio));
+        Assert.Equal(expectedMask, LogitechWheelLeds.RatioToMask(ratio));
     }
 
     [Fact]
     public void RatioToMask_ClampsAboveOne()
     {
-        Assert.Equal(0x1F, G29HidLeds.RatioToMask(1.5f));
-        Assert.Equal(0x1F, G29HidLeds.RatioToMask(99f));
+        Assert.Equal(0x1F, LogitechWheelLeds.RatioToMask(1.5f));
+        Assert.Equal(0x1F, LogitechWheelLeds.RatioToMask(99f));
     }
 
     [Fact]
     public void RatioToMask_ClampsNegative()
     {
-        Assert.Equal(0x00, G29HidLeds.RatioToMask(-0.5f));
+        Assert.Equal(0x00, LogitechWheelLeds.RatioToMask(-0.5f));
     }
 
     [Fact]
     public void AllOnMask_Is0x1F()
     {
         // Verify the "all LEDs on" bit pattern
-        Assert.Equal(0x1F, G29HidLeds.RatioToMask(1f));
-        Assert.Equal(0b00011111, G29HidLeds.RatioToMask(1f));
+        Assert.Equal(0x1F, LogitechWheelLeds.RatioToMask(1f));
+        Assert.Equal(0b00011111, LogitechWheelLeds.RatioToMask(1f));
     }
 }

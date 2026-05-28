@@ -12,7 +12,7 @@ public partial class App : Application
     private Settings _settings = Settings.Load();
     private SettingsWindow? _settingsWindow;
 
-    private bool _g29Connected;
+    private bool _wheelConnected;
     private bool _telemetryActive;
 
     // Icons created once on the UI thread at startup and reused.
@@ -29,7 +29,7 @@ public partial class App : Application
         _liveIcon = BuildIcon(Color.FromArgb(255, 220, 60));
 
         _service = new TelemetryService();
-        _service.G29StatusChanged += OnG29Status;
+        _service.WheelStatusChanged += OnWheelStatus;
         _service.TelemetryStatusChanged += OnTelemetryStatus;
         _service.Start(_settings);
 
@@ -45,9 +45,9 @@ public partial class App : Application
 
     // ── Tray icon state ───────────────────────────────────────────────────────
 
-    private void OnG29Status(bool connected)
+    private void OnWheelStatus(bool connected)
     {
-        _g29Connected = connected;
+        _wheelConnected = connected;
         Dispatcher.Invoke(RefreshIcon);
     }
 
@@ -64,10 +64,10 @@ public partial class App : Application
         Icon icon;
         string tip;
 
-        if (!_g29Connected)
+        if (!_wheelConnected)
         {
             icon = _idleIcon;
-            tip = "ForzaG29Leds — G29 not found";
+            tip = "ForzaG29Leds — Wheel not found";
         }
         else if (_telemetryActive)
         {
@@ -77,7 +77,7 @@ public partial class App : Application
         else
         {
             icon = _readyIcon;
-            tip = "ForzaG29Leds — G29 ready";
+            tip = "ForzaG29Leds — Wheel ready";
         }
 
         _tray.Icon = icon;

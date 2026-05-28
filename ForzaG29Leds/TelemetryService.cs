@@ -5,12 +5,12 @@ namespace ForzaG29Leds;
 
 public sealed class TelemetryService : IDisposable
 {
-    public event Action<bool>? G29StatusChanged;       // true = connected
+    public event Action<bool>? WheelStatusChanged;       // true = connected
     public event Action<bool>? TelemetryStatusChanged; // true = receiving packets
     public event Action<ForzaTelemetryPacket>? PacketReceived;         // throttled ~4 Hz
 
     private Settings _settings = new();
-    private volatile G29HidLeds? _leds;
+    private volatile LogitechWheelLeds? _leds;
     private CancellationTokenSource? _cts;
     private Task? _udpTask;
     private Task? _flashTask;
@@ -23,7 +23,7 @@ public sealed class TelemetryService : IDisposable
     private long _lastDumpTick;
     private bool _disposed;
 
-    public bool IsG29Connected => _leds?.IsOpen ?? false;
+    public bool IsWheelConnected => _leds?.IsOpen ?? false;
     public bool IsReceivingTelemetry => Environment.TickCount64 - _lastPacketTick < 3000;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -43,8 +43,8 @@ public sealed class TelemetryService : IDisposable
 
     private void InitHid()
     {
-        _leds = G29HidLeds.Open();
-        G29StatusChanged?.Invoke(_leds?.IsOpen ?? false);
+        _leds = LogitechWheelLeds.Open();
+        WheelStatusChanged?.Invoke(_leds?.IsOpen ?? false);
 
         if (_leds?.IsOpen == true)
             FlashTest();
@@ -200,11 +200,11 @@ public sealed class TelemetryService : IDisposable
 
             bool hadDevice = _leds != null; // was open before but handle was invalidated
             _leds?.Dispose();
-            _leds = G29HidLeds.Open();
+            _leds = LogitechWheelLeds.Open();
             bool connected = _leds?.IsOpen == true;
 
             if (hadDevice || connected)
-                G29StatusChanged?.Invoke(connected);
+                WheelStatusChanged?.Invoke(connected);
 
             if (connected) FlashTest();
         }
