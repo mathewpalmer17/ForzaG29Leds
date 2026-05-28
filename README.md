@@ -42,6 +42,8 @@ The app starts in the system tray. Double-click the icon or right-click › **Se
 
 The wheel must be plugged in before launching. No G HUB or additional DLLs required.
 
+If no telemetry is arriving (grey status dot), confirm Data Out is enabled in Forza and the port matches.
+
 ## Settings
 
 | Setting | Default | Description |
@@ -49,7 +51,7 @@ The wheel must be plugged in before launching. No G HUB or additional DLLs requi
 | UDP Port | `9999` | Must match the Forza Data Out port |
 | Solid from | `77` % | All LEDs on solid above this RPM fraction |
 | Flash from | `82` % | All LEDs flash above this RPM fraction |
-| Flash speed | `80` ms | On/off interval when flashing |
+| Flash interval | `80` ms | On/off interval when flashing (lower = faster) |
 
 Settings are saved to `%AppData%\ForzaG29Leds\settings.json`.
 
@@ -64,13 +66,24 @@ Settings are saved to `%AppData%\ForzaG29Leds\settings.json`.
 
 Percentages are of `EngineMaxRpm` as reported by the telemetry, so they adapt automatically to every car.
 
-## Building
+## Building from source
 
 Requires [.NET 8 SDK](https://dotnet.microsoft.com/download) and Windows.
 
 ```
-dotnet build -c Release
+git clone https://github.com/mathewpalmer17/ForzaG29Leds
+cd ForzaG29Leds
+dotnet build
+dotnet test
 ```
+
+To produce a self-contained single-file exe:
+
+```
+dotnet publish ForzaG29Leds -c Release -o publish
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more detail.
 
 ## Technical notes
 

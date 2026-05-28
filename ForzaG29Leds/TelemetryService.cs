@@ -5,12 +5,19 @@ namespace ForzaG29Leds;
 
 public sealed class TelemetryService : IDisposable
 {
-    public event Action<bool>? WheelStatusChanged;       // true = connected
-    public event Action<bool>? TelemetryStatusChanged; // true = receiving packets
-    public event Action<ForzaTelemetryPacket>? PacketReceived;         // throttled ~4 Hz
+    public event Action<bool>?   WheelStatusChanged;     // true = connected
+    public event Action<bool>?   TelemetryStatusChanged; // true = receiving packets
+    public event Action<string>? ServiceError;           // e.g. port already in use
+    public event Action<ForzaTelemetryPacket>? PacketReceived; // throttled ~4 Hz
 
     private Settings _settings = new();
-    private volatile LogitechWheelLeds? _leds;
+
+    // _leds is always accessed through _ledsLock to prevent the flash loop
+    // from calling into a handle that the reconnect loop is simultaneously
+    // disposing and replacing.
+    private readonly object _ledsLock = new();
+    private LogitechWheelLeds? _leds;
+
     private CancellationTokenSource? _cts;
     private Task? _udpTask;
     private Task? _flashTask;
@@ -21,9 +28,10 @@ public sealed class TelemetryService : IDisposable
     private bool _flashState;
     private long _lastPacketTick;
     private long _lastDumpTick;
+    private bool _telemetryActive;   // tracks last-fired state; prevents 60 Hz dispatches
     private bool _disposed;
 
-    public bool IsWheelConnected => _leds?.IsOpen ?? false;
+    public bool IsWheelConnected     => _leds?.IsOpen ?? false;
     public bool IsReceivingTelemetry => Environment.TickCount64 - _lastPacketTick < 3000;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -31,6 +39,9 @@ public sealed class TelemetryService : IDisposable
     public void Start(Settings settings)
     {
         _settings = settings;
+        // Start loops first so _cts is never null when ApplySettings is called.
+        // HID discovery runs in background and is independent of the loops.
+        StartLoops();
         Task.Run(InitHid);
     }
 
@@ -41,23 +52,25 @@ public sealed class TelemetryService : IDisposable
         if (portChanged) RestartLoops();
     }
 
+    public void TestLeds() => Task.Run(FlashTest);
+
     private void InitHid()
     {
-        _leds = LogitechWheelLeds.Open();
-        WheelStatusChanged?.Invoke(_leds?.IsOpen ?? false);
+        var leds = LogitechWheelLeds.Open();
+        lock (_ledsLock) { _leds = leds; }
+        WheelStatusChanged?.Invoke(leds?.IsOpen ?? false);
 
-        if (_leds?.IsOpen == true)
-            FlashTest();
-
-        StartLoops();
+        // Run flash test concurrently — does not block loop startup
+        if (leds?.IsOpen == true)
+            Task.Run(FlashTest);
     }
 
     private void StartLoops()
     {
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-        _udpTask      = Task.Run(() => UdpLoop(ct),       ct);
-        _flashTask    = Task.Run(() => FlashLoop(ct),     ct);
+        _udpTask       = Task.Run(() => UdpLoop(ct),       ct);
+        _flashTask     = Task.Run(() => FlashLoop(ct),     ct);
         _reconnectTask = Task.Run(() => ReconnectLoop(ct), ct);
     }
 
@@ -70,7 +83,7 @@ public sealed class TelemetryService : IDisposable
                          _flashTask     ?? Task.CompletedTask,
                          _reconnectTask ?? Task.CompletedTask).Wait(1500);
         }
-        catch { }
+        catch (AggregateException) { }   // expected on cancellation
         _cts?.Dispose();
         _cts = null;
     }
@@ -87,9 +100,12 @@ public sealed class TelemetryService : IDisposable
     {
         for (int i = 0; i < 3; i++)
         {
-            _leds!.AllOn();
+            LogitechWheelLeds? leds;
+            lock (_ledsLock) { leds = _leds; }
+            leds?.AllOn();
             Thread.Sleep(200);
-            _leds.TurnOff();
+            lock (_ledsLock) { leds = _leds; }
+            leds?.TurnOff();
             Thread.Sleep(200);
         }
     }
@@ -98,11 +114,22 @@ public sealed class TelemetryService : IDisposable
 
     private void UdpLoop(CancellationToken ct)
     {
-        TelemetryStatusChanged?.Invoke(false);
+        FireTelemetry(false);
         UdpClient? udp = null;
         try
         {
-            udp = new UdpClient(new IPEndPoint(IPAddress.Any, _settings.Port));
+            try
+            {
+                udp = new UdpClient(new IPEndPoint(IPAddress.Any, _settings.Port));
+            }
+            catch (SocketException ex) when (!ct.IsCancellationRequested)
+            {
+                ServiceError?.Invoke(
+                    $"Cannot bind UDP port {_settings.Port}: {ex.Message}\n" +
+                    "Check that no other app is using the same port.");
+                return;
+            }
+
             ct.Register(() => { try { udp.Close(); } catch { } });
 
             var remote = new IPEndPoint(IPAddress.Any, 0);
@@ -116,7 +143,7 @@ public sealed class TelemetryService : IDisposable
                 if (data.Length < 324) continue;
 
                 _lastPacketTick = Environment.TickCount64;
-                TelemetryStatusChanged?.Invoke(true);
+                FireTelemetry(true);
                 ProcessPacket(data);
             }
         }
@@ -124,8 +151,17 @@ public sealed class TelemetryService : IDisposable
         finally
         {
             udp?.Dispose();
-            TelemetryStatusChanged?.Invoke(false);
+            FireTelemetry(false);
         }
+    }
+
+    // Only fires TelemetryStatusChanged when the state actually changes
+    // — avoids ~60 cross-thread dispatches per second while in a race.
+    private void FireTelemetry(bool active)
+    {
+        if (active == _telemetryActive) return;
+        _telemetryActive = active;
+        TelemetryStatusChanged?.Invoke(active);
     }
 
     // ── LED stage logic (pure, testable) ─────────────────────────────────────
@@ -135,11 +171,11 @@ public sealed class TelemetryService : IDisposable
     internal static (LedStage stage, float progressRatio) ComputeLedState(
         float ratio, float idleRatio, float solidRatio, float flashRatio)
     {
-        if (ratio >= flashRatio) return (LedStage.Flash, 0f);
-        if (ratio >= solidRatio) return (LedStage.Solid, 0f);
-        if (ratio < idleRatio) return (LedStage.Off, 0f);
+        if (ratio >= flashRatio) return (LedStage.Flash,       0f);
+        if (ratio >= solidRatio) return (LedStage.Solid,       0f);
+        if (ratio <  idleRatio)  return (LedStage.Off,         0f);
 
-        float range = solidRatio - idleRatio;
+        float range  = solidRatio - idleRatio;
         float scaled = range > 0f ? (ratio - idleRatio) / range : 0f;
         return (LedStage.Progressive, Math.Clamp(scaled, 0f, 1f));
     }
@@ -151,14 +187,17 @@ public sealed class TelemetryService : IDisposable
         ForzaTelemetryPacket pkt;
         fixed (byte* ptr = data) { pkt = *(ForzaTelemetryPacket*)ptr; }
 
-        if (pkt.IsRaceOn == 0) { _leds?.TurnOff(); return; }
+        LogitechWheelLeds? leds;
+        lock (_ledsLock) { leds = _leds; }
 
-        float current = pkt.CurrentEngineRpm;
-        float max = pkt.EngineMaxRpm;
-        float idle = pkt.EngineIdleRpm;
+        if (pkt.IsRaceOn == 0) { leds?.TurnOff(); return; }
+
+        float current   = pkt.CurrentEngineRpm;
+        float max       = pkt.EngineMaxRpm;
+        float idle      = pkt.EngineIdleRpm;
         if (max <= 0f) return;
 
-        float ratio    = current / max;
+        float ratio     = current / max;
         float idleRatio = idle / max;
 
         var (stage, progressRatio) = ComputeLedState(
@@ -166,13 +205,13 @@ public sealed class TelemetryService : IDisposable
 
         _atLimiter = stage == LedStage.Flash;
 
-        if (_leds is not null && !_atLimiter)
+        if (leds is not null && !_atLimiter)
         {
             switch (stage)
             {
-                case LedStage.Solid: _leds.AllOn(); break;
-                case LedStage.Progressive: _leds.SetFromRatio(progressRatio); break;
-                case LedStage.Off: _leds.TurnOff(); break;
+                case LedStage.Solid:       leds.AllOn();                     break;
+                case LedStage.Progressive: leds.SetFromRatio(progressRatio); break;
+                case LedStage.Off:         leds.TurnOff();                   break;
             }
         }
 
@@ -190,23 +229,25 @@ public sealed class TelemetryService : IDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            // Sleep in small chunks rather than ct.WaitHandle.WaitOne — accessing
-            // WaitHandle allocates a kernel event that gets disposed by _cts.Dispose()
-            // in StopLoops() while this thread is still blocked, causing c000041d.
             for (int i = 0; i < 30 && !ct.IsCancellationRequested; i++)
                 Thread.Sleep(100);
             if (ct.IsCancellationRequested) break;
-            if (_leds?.IsOpen == true) continue;
 
-            bool hadDevice = _leds != null; // was open before but handle was invalidated
-            _leds?.Dispose();
-            _leds = LogitechWheelLeds.Open();
-            bool connected = _leds?.IsOpen == true;
+            LogitechWheelLeds? current;
+            lock (_ledsLock) { current = _leds; }
+            if (current?.IsOpen == true) continue;
 
+            bool hadDevice = current != null;
+            current?.Dispose();
+
+            var newLeds = LogitechWheelLeds.Open();
+            lock (_ledsLock) { _leds = newLeds; }
+
+            bool connected = newLeds?.IsOpen == true;
             if (hadDevice || connected)
                 WheelStatusChanged?.Invoke(connected);
 
-            if (connected) FlashTest();
+            if (connected) Task.Run(FlashTest);
         }
     }
 
@@ -216,15 +257,20 @@ public sealed class TelemetryService : IDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            if (_atLimiter && _leds is not null)
+            if (_atLimiter)
             {
-                long now = Environment.TickCount64;
-                if (now - _lastFlashTick >= _settings.FlashIntervalMs)
+                LogitechWheelLeds? leds;
+                lock (_ledsLock) { leds = _leds; }
+                if (leds is not null)
                 {
-                    _lastFlashTick = now;
-                    _flashState = !_flashState;
-                    if (_flashState) _leds.AllOn();
-                    else _leds.TurnOff();
+                    long now = Environment.TickCount64;
+                    if (now - _lastFlashTick >= _settings.FlashIntervalMs)
+                    {
+                        _lastFlashTick = now;
+                        _flashState    = !_flashState;
+                        if (_flashState) leds.AllOn();
+                        else             leds.TurnOff();
+                    }
                 }
             }
             Thread.Sleep(16);
@@ -238,7 +284,9 @@ public sealed class TelemetryService : IDisposable
         if (_disposed) return;
         _disposed = true;
         StopLoops();
-        _leds?.TurnOff();
-        _leds?.Dispose();
+        LogitechWheelLeds? leds;
+        lock (_ledsLock) { leds = _leds; _leds = null; }
+        leds?.TurnOff();
+        leds?.Dispose();
     }
 }

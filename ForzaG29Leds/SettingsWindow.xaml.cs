@@ -10,23 +10,25 @@ public partial class SettingsWindow : Window
 
     private readonly TelemetryService _service;
 
-    private static readonly SolidColorBrush Green = new(System.Windows.Media.Color.FromRgb(80, 200, 80));
-    private static readonly SolidColorBrush Blue = new(System.Windows.Media.Color.FromRgb(60, 160, 240));
-    private static readonly SolidColorBrush Grey = new(System.Windows.Media.Color.FromRgb(160, 160, 160));
+    private static readonly SolidColorBrush Green = new(System.Windows.Media.Color.FromRgb(80,  200, 80));
+    private static readonly SolidColorBrush Blue  = new(System.Windows.Media.Color.FromRgb(60,  160, 240));
+    private static readonly SolidColorBrush Grey  = new(System.Windows.Media.Color.FromRgb(160, 160, 160));
 
     public SettingsWindow(Settings settings, TelemetryService service)
     {
         InitializeComponent();
         _service = service;
 
-        PortBox.Text = settings.Port.ToString();
-        SolidBox.Text = settings.SolidPercent.ToString();
-        FlashBox.Text = settings.FlashPercent.ToString();
+        PortBox.Text    = settings.Port.ToString();
+        SolidBox.Text   = settings.SolidPercent.ToString();
+        FlashBox.Text   = settings.FlashPercent.ToString();
         FlashMsBox.Text = settings.FlashIntervalMs.ToString();
 
-        _service.WheelStatusChanged += OnWheelStatus;
+        StartupBox.IsChecked = StartupManager.IsEnabled;
+
+        _service.WheelStatusChanged     += OnWheelStatus;
         _service.TelemetryStatusChanged += OnTelemetryStatus;
-        _service.PacketReceived += OnPacketReceived;
+        _service.PacketReceived         += OnPacketReceived;
 
         RefreshWheel(service.IsWheelConnected);
         RefreshTel(service.IsReceivingTelemetry);
@@ -42,16 +44,18 @@ public partial class SettingsWindow : Window
 
     private void RefreshWheel(bool connected)
     {
-        WheelDot.Fill = connected ? Green : Grey;
+        WheelDot.Fill   = connected ? Green : Grey;
         WheelLabel.Text = connected ? "Wheel connected" : "Wheel not found";
     }
 
     private void RefreshTel(bool receiving)
     {
-        TelDot.Fill = receiving ? Blue : Grey;
+        TelDot.Fill   = receiving ? Blue : Grey;
         TelLabel.Text = receiving ? "Receiving telemetry" : "No telemetry";
+        // Show/hide the Forza setup hint — avoids confusion on first launch
+        TelHint.Visibility = receiving ? Visibility.Collapsed : Visibility.Visible;
         if (!receiving)
-            Dispatcher.Invoke(() => TelemetryDump.Text = "Waiting for telemetry…");
+            TelemetryDump.Text = "Waiting for telemetry…";
     }
 
     // ── Telemetry dump ────────────────────────────────────────────────────────
@@ -61,9 +65,9 @@ public partial class SettingsWindow : Window
 
     private static string FormatPacket(ForzaTelemetryPacket p)
     {
-        float max = p.EngineMaxRpm;
+        float max   = p.EngineMaxRpm;
         float ratio = max > 0f ? p.CurrentEngineRpm / max : 0f;
-        var sb = new StringBuilder();
+        var   sb    = new StringBuilder();
 
         sb.AppendLine("── Engine ──────────────────────────────────────");
         sb.AppendLine($"  RPM          {p.CurrentEngineRpm,7:F0} / {max,7:F0}  ({ratio * 100:F1} %)");
@@ -112,7 +116,7 @@ public partial class SettingsWindow : Window
         sb.AppendLine($"  Position     X {p.PositionX,8:F1}  Y {p.PositionY,8:F1}  Z {p.PositionZ,8:F1}");
         sb.AppendLine();
         sb.AppendLine("── Car ──────────────────────────────────────────");
-        sb.AppendLine($"  Class        {p.CarClass switch { 0 => "D", 1 => "C", 2 => "B", 3 => "A", 4 => "S1", 5 => "S2", 6 => "X", _ => p.CarClass.ToString() }}  PI {p.CarPerformanceIndex}");
+        sb.AppendLine($"  Class        {p.CarClass switch { 0=>"D",1=>"C",2=>"B",3=>"A",4=>"S1",5=>"S2",6=>"X",_=>p.CarClass.ToString() }}  PI {p.CarPerformanceIndex}");
         sb.AppendLine($"  Cylinders    {p.NumCylinders}");
         sb.AppendLine($"  Ordinal      {p.CarOrdinal}");
         sb.AppendLine($"  Track        {p.TrackOrdinal}");
@@ -124,25 +128,30 @@ public partial class SettingsWindow : Window
     private static string FmtTime(float seconds)
     {
         if (seconds <= 0f) return "--:--.---";
-        int m = (int)(seconds / 60);
+        int   m = (int)(seconds / 60);
         float s = seconds - m * 60;
         return $"{m}:{s:00.000}";
     }
+
+    // ── Test LEDs ─────────────────────────────────────────────────────────────
+
+    private void TestLeds_Click(object sender, RoutedEventArgs e) =>
+        _service.TestLeds();
 
     // ── Save / Cancel ─────────────────────────────────────────────────────────
 
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        if (!int.TryParse(PortBox.Text, out int port) || port < 1 || port > 65535 ||
-            !int.TryParse(SolidBox.Text, out int solid) || solid < 50 || solid > 99 ||
-            !int.TryParse(FlashBox.Text, out int flash) || flash < 50 || flash > 99 ||
-            !int.TryParse(FlashMsBox.Text, out int ms) || ms < 10 || ms > 2000)
+        if (!int.TryParse(PortBox.Text,    out int port)  || port  < 1   || port  > 65535 ||
+            !int.TryParse(SolidBox.Text,   out int solid) || solid < 50  || solid > 99    ||
+            !int.TryParse(FlashBox.Text,   out int flash) || flash < 50  || flash > 99    ||
+            !int.TryParse(FlashMsBox.Text, out int ms)    || ms    < 10  || ms    > 2000)
         {
             System.Windows.MessageBox.Show(
                 "Check your values:\n" +
                 "  Port: 1 – 65535\n" +
                 "  Solid / Flash: 50 – 99 %\n" +
-                "  Flash speed: 10 – 2000 ms",
+                "  Flash interval: 10 – 2000 ms",
                 "Invalid settings", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -154,11 +163,13 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        StartupManager.SetEnabled(StartupBox.IsChecked == true);
+
         var s = new Settings
         {
-            Port = port,
-            SolidPercent = solid,
-            FlashPercent = flash,
+            Port            = port,
+            SolidPercent    = solid,
+            FlashPercent    = flash,
             FlashIntervalMs = ms,
         };
         s.Save();
@@ -170,9 +181,9 @@ public partial class SettingsWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        _service.WheelStatusChanged -= OnWheelStatus;
+        _service.WheelStatusChanged     -= OnWheelStatus;
         _service.TelemetryStatusChanged -= OnTelemetryStatus;
-        _service.PacketReceived -= OnPacketReceived;
+        _service.PacketReceived         -= OnPacketReceived;
         base.OnClosed(e);
     }
 }

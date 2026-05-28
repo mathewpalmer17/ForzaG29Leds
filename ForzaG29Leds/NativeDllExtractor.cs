@@ -45,11 +45,21 @@ internal static class NativeDllExtractor
             var dest = Path.Combine(dir, name);
             if (File.Exists(dest)) continue;   // already extracted this version
 
-            using var stream = asm.GetManifestResourceStream(name);
-            if (stream is null) continue;
-
-            using var file = File.Create(dest);
-            stream.CopyTo(file);
+            // Write to a temp file first; move atomically when complete.
+            // Avoids leaving a corrupt partial file if the process is killed mid-copy.
+            var tmp = dest + ".tmp";
+            try
+            {
+                using var stream = asm.GetManifestResourceStream(name);
+                if (stream is null) continue;
+                using (var file = File.Create(tmp))
+                    stream.CopyTo(file);
+                File.Move(tmp, dest, overwrite: true);
+            }
+            catch
+            {
+                try { File.Delete(tmp); } catch { }
+            }
         }
 
         SetDllDirectory(dir);
