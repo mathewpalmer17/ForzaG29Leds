@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Forza Rev LED Settings"
-        Width="420" Height="580"
-        MinWidth="380" MinHeight="520"
+        Width="420" Height="660"
+        MinWidth="380" MinHeight="600"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="False">

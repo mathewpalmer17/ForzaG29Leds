@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish self-contained
+        run: dotnet publish ForzaG29Leds -c Release -o publish-sc
+
+      - name: Publish framework-dependent
+        run: dotnet publish ForzaG29Leds -c Release -p:FDPublish=true -o publish-fd
+
+      - name: Rename SC exe
+        run: Rename-Item publish-sc\ForzaG29Leds.exe ForzaG29Leds-SelfContained.exe
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            publish-sc/ForzaG29Leds-SelfContained.exe
+            publish-fd/ForzaG29Leds.exe
+          generate_release_notes: false
+          draft: true
