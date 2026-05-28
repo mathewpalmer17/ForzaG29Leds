@@ -132,9 +132,7 @@ public partial class App : Application
 
     private void ExitApp()
     {
-        _tray?.Dispose();
-        _service?.Dispose();
-        Shutdown();
+        Shutdown(); // cleanup handled in OnExit
     }
 
     protected override void OnExit(ExitEventArgs e)

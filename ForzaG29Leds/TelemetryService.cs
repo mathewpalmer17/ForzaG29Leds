@@ -190,7 +190,11 @@ public sealed class TelemetryService : IDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            ct.WaitHandle.WaitOne(3000);
+            // Sleep in small chunks rather than ct.WaitHandle.WaitOne — accessing
+            // WaitHandle allocates a kernel event that gets disposed by _cts.Dispose()
+            // in StopLoops() while this thread is still blocked, causing c000041d.
+            for (int i = 0; i < 30 && !ct.IsCancellationRequested; i++)
+                Thread.Sleep(100);
             if (ct.IsCancellationRequested) break;
             if (_leds?.IsOpen == true) continue;
 
