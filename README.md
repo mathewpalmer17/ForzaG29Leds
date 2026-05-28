@@ -16,13 +16,13 @@ Windows tray app that drives the five rev-limiter LEDs on a Logitech G29 steerin
 
 ### 1. Enable Data Out in Forza Horizon 6
 
-`Settings › HUD and Gameplay › Data Out`
+Go to **Settings › HUD & Gameplay**, scroll down to the **Telemetry** section and set:
 
 | Setting | Value |
 |---|---|
 | Data Out | **On** |
-| Data Out IP | `127.0.0.1` |
-| Data Out Port | `9999` |
+| Data Out IP Address | `127.0.0.1` |
+| Data Out IP Port | `9999` |
 
 ### 2. Run
 
@@ -39,8 +39,8 @@ The G29 must be plugged in before launching. No G HUB or additional DLLs require
 | Setting | Default | Description |
 |---|---|---|
 | UDP Port | `9999` | Must match the Forza Data Out port |
-| Solid from | `85` % | All LEDs on solid above this RPM fraction |
-| Flash from | `90` % | All LEDs flash above this RPM fraction |
+| Solid from | `77` % | All LEDs on solid above this RPM fraction |
+| Flash from | `82` % | All LEDs flash above this RPM fraction |
 | Flash speed | `80` ms | On/off interval when flashing |
 
 Settings are saved to `%AppData%\ForzaG29Leds\settings.json`.
