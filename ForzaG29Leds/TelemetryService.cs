@@ -237,14 +237,14 @@ public sealed class TelemetryService : IDisposable
             lock (_ledsLock) { current = _leds; }
             if (current?.IsOpen == true) continue;
 
-            bool hadDevice = current != null;
+            bool wasConnected = current != null;
             current?.Dispose();
 
             var newLeds = LogitechWheelLeds.Open();
             lock (_ledsLock) { _leds = newLeds; }
 
             bool connected = newLeds?.IsOpen == true;
-            if (hadDevice || connected)
+            if (wasConnected || connected)
                 WheelStatusChanged?.Invoke(connected);
 
             if (connected) Task.Run(FlashTest);
